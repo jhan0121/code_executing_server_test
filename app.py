@@ -65,17 +65,18 @@ def run_code():
         os.makedirs(PYTHON_DIR)
     if language == 'java' and not os.path.exists(JAVA_DIR):
         os.makedirs(JAVA_DIR)
-    
 
     # 고유 파일 이름 생성
     unique_id = str(uuid.uuid4())
-    python_filename = f"{PYTHON_DIR}/code_{language}_{user_id}_{quiz_id}_{unique_id}.{ext}"
-    
     if language == 'java':
-        java_filename = f"{JAVA_DIR}/Main.java"
+        java_dir = f"{JAVA_DIR}/java_files_{unique_id}"
+        if not os.path.exists(java_dir):
+            os.makedirs(java_dir)
+        java_filename = f"{java_dir}/Main.java"
         with open(java_filename, 'w') as f:
             f.write(code)
     elif language == 'python':
+        python_filename = f"{PYTHON_DIR}/code_{language}_{user_id}_{quiz_id}_{unique_id}.{ext}"
         with open(python_filename, 'w') as f:
             f.write(code)
 
@@ -83,10 +84,12 @@ def run_code():
     with session_scope() as session:
         quiz = session.query(Quiz).filter_by(quiz_id=quiz_id).first()
         if not quiz:
-            if os.path.exists(python_filename):
+            if language == 'python' and os.path.exists(python_filename):
                 os.remove(python_filename)  # python 파일 삭제
             if language == 'java' and os.path.exists(java_filename):
                 os.remove(java_filename)  # Java 파일 삭제
+                os.rmdir(java_dir)  # Java 디렉터리 삭제
+            return jsonify({'error': 'Quiz not found'}), 404
 
         inputs = quiz.inputs
         expected_outputs = quiz.outputs.strip().split('\n')
@@ -104,8 +107,7 @@ def run_code():
                 return jsonify({'result': f'오류 발생 {compile_stderr}'}), 200
 
             # Java 실행
-            class_filename = f"{JAVA_DIR}/Main"
-            process = subprocess.Popen(f"java -cp {JAVA_DIR} Main", stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+            process = subprocess.Popen(f"java -cp {java_dir} Main", stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
         else:
             return jsonify({'error': 'Unsupported language'}), 400
 
@@ -136,10 +138,16 @@ def run_code():
 
     finally:
         # 파일 삭제 (성공적인 실행 후)
-        if os.path.exists(python_filename):
+        if language == 'python' and os.path.exists(python_filename):
             os.remove(python_filename)
-        if language == 'java' and os.path.exists(java_filename):
-            os.remove(java_filename)
+        if language == 'java':
+            java_classfile = f"{java_dir}/Main.class"
+            if os.path.exists(java_filename):
+                os.remove(java_filename)
+            if os.path.exists(java_classfile):
+                os.remove(java_classfile)
+            if os.path.exists(java_dir):
+                os.rmdir(java_dir)  # Java 디렉터리 삭제
 
 if __name__ == '__main__':
     app.run(debug=True)
